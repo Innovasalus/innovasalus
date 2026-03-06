@@ -18,7 +18,9 @@
     --red: #c8392a;
     --yellow: #c8952a;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* Editor-only elements: hidden by default, shown via JS after auth */
+#btnNuevoCliente, #tabConfigBtn, #btnEditar, #btnDrive, #btnNetlify { display: none !important; }
+#btnNuevoCliente.editor-visible, #tabConfigBtn.editor-visible, #btnEditar.editor-visible, #btnDrive.editor-visible, #btnNetlify.editor-visible { display: flex !important; }
   body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
   
   header {
@@ -449,7 +451,7 @@
       <div class="tab" onclick="switchTab('detalle')" id="tabDetalle">👤 Detalle</div>
       <div class="tab" onclick="switchTab('clientes')">👥 Clientes</div>
       <button id="btnNuevoCliente" class="btn-nuevo" style="margin-left:auto;padding:7px 15px;font-size:.78rem" onclick="openEditModal(-1)">＋ Nuevo cliente</button>
-      <div id="tabConfig" class="tab" onclick="switchTab('config')" style="margin-left:6px">&#9881;&#65039; Config</div>
+      <div id="tabConfigBtn" class="tab" onclick="switchTab('config')" style="margin-left:6px">&#9881;&#65039; Config</div>
     </div>
 
     <!-- TAB RESUMEN -->
@@ -1809,11 +1811,16 @@ function isEditor() {
 }
 
 function applyEditorMode(editor) {
-  const ids = ['btnNuevoCliente', 'tabConfig', 'btnEditar', 'btnDrive', 'btnDriveText', 'btnNetlify'];
+  const ids = ['btnNuevoCliente', 'tabConfigBtn', 'btnEditar', 'btnDrive', 'btnNetlify'];
   ids.forEach(function(id) {
     const el = document.getElementById(id);
     if (!el) return;
-    el.style.display = editor ? '' : 'none';
+    if (editor) {
+      el.classList.add('editor-visible');
+      el.style.removeProperty('display');
+    } else {
+      el.classList.remove('editor-visible');
+    }
   });
 
   // Also hide Guardar en Drive and Backup buttons if not editor
