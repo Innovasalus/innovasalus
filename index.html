@@ -18,7 +18,9 @@
     --red: #c8392a;
     --yellow: #c8952a;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* Editor-only elements: hidden by default, shown via JS after auth */
+#btnNuevoCliente, #tabConfig, #btnEditar, #btnDrive, #btnNetlify { display: none !important; }
+#btnNuevoCliente.editor-visible, #tabConfig.editor-visible, #btnEditar.editor-visible, #btnDrive.editor-visible, #btnNetlify.editor-visible { display: flex !important; }
   body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
   
   header {
@@ -380,6 +382,11 @@
     <button id="btnDrive" onclick="gdriveSave()" title="Guardar en Google Drive" style="background:none;border:1px solid #444;color:#aaa;border-radius:7px;padding:4px 11px;font-size:.7rem;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.borderColor='#4285f4';this.style.color='#4285f4'" onmouseout="this.style.borderColor='#444';this.style.color='#aaa'">
       <svg width="13" height="13" viewBox="0 0 87.3 78" style="flex-shrink:0"><path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L33.85 40H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="M43.65 25L23.55 9.15c-1.35.8-2.5 1.9-3.3 3.3L1.2 43.55c-.8 1.4-1.2 2.95-1.2 4.5h33.85z" fill="#00ac47"/><path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 56.6c.8-1.4 1.2-2.95 1.2-4.5H53.45l7.2 13.35z" fill="#ea4335"/><path d="M43.65 25L63.75 9.15C62.4 8.35 60.85 8 59.3 8H27.95c-1.55 0-3.1.35-4.45 1.15z" fill="#00832d"/><path d="M53.45 52.1H33.85L13.75 76.8c1.35.8 2.9 1.2 4.45 1.2h50.9c1.55 0 3.1-.4 4.45-1.2z" fill="#2684fc"/><path d="M73.4 26.45l-9.3-16.1c-.8-1.4-1.95-2.5-3.3-3.3L40.7 25l12.75 27.1H86.1c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>
       <span id="btnDriveText">Guardar en Drive</span>
+    </button>
+
+    <!-- Publicar en Netlify -->
+    <button id="btnNetlify" onclick="netlifyPublish()" title="Publicar en Netlify (actualiza para todos)" style="background:none;border:1px solid #444;color:#aaa;border-radius:7px;padding:4px 11px;font-size:.7rem;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;transition:all .15s" onmouseover="this.style.borderColor='#00ad9f';this.style.color='#00ad9f'" onmouseout="this.style.borderColor='#444';this.style.color='#aaa'">
+      🚀 <span id="btnNetlifyText">Publicar</span>
     </button>
 
     <!-- Backup HTML -->
@@ -1701,7 +1708,93 @@ function showCfgError(name, linked) {
 }
 initMaster();
 
-// ── MODO EDITOR / CONSULTA ───────────────────────────────────────────────────
+// ── NETLIFY PUBLISH ───────────────────────────────────────────────────────────
+const NETLIFY_TOKEN = 'nfp_hG8n2K9xrS7GECBT54trMfHt2baUmxfef194';
+const NETLIFY_SITE_ID = 'c2d64eb2-fd52-4200-b7fe-43a3df72c098';
+
+async function netlifyPublish() {
+  const btn = document.getElementById('btnNetlifyText');
+  if (btn) btn.textContent = 'Publicando...';
+
+  try {
+    // Build HTML blob with current DATA
+    const htmlContent = buildHTMLBlob();
+    
+    // Upload to Netlify using Files API
+    const response = await fetch(`https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_ID}/deploys`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NETLIFY_TOKEN}`,
+        'Content-Type': 'application/zip'
+      }
+    });
+
+    // Use the simpler file digest approach
+    await netlifyDeployFiles(htmlContent, btn);
+
+  } catch(e) {
+    console.error('Netlify error:', e);
+    if (btn) btn.textContent = 'Publicar';
+    showToast('❌ Error al publicar en Netlify: ' + e.message, '#c8392a');
+  }
+}
+
+async function netlifyDeployFiles(htmlContent, btn) {
+  // Step 1: Create deploy with file digest
+  const encoder = new TextEncoder();
+  const data = encoder.encode(htmlContent);
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const sha1 = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_ID}/deploys`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${NETLIFY_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      files: { '/index.html': sha1 },
+      async: false
+    })
+  });
+
+  if (!deployRes.ok) {
+    const err = await deployRes.text();
+    throw new Error('Deploy create failed: ' + err);
+  }
+
+  const deploy = await deployRes.json();
+
+  // Step 2: Upload the file if required
+  if (deploy.required && deploy.required.length > 0) {
+    const uploadRes = await fetch(`https://api.netlify.com/api/v1/deploys/${deploy.id}/files/index.html`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${NETLIFY_TOKEN}`,
+        'Content-Type': 'application/octet-stream'
+      },
+      body: data
+    });
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error('File upload failed: ' + err);
+    }
+  }
+
+  if (btn) btn.textContent = 'Publicar';
+  showToast('🚀 ¡Publicado en Netlify! Todos verán los cambios en unos segundos.', '#00ad9f');
+}
+
+function showToast(msg, color) {
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:${color||'#2a8c5f'};color:#fff;border-radius:10px;padding:12px 22px;font-size:.8rem;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.25);font-family:DM Sans,sans-serif;white-space:nowrap`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.style.transition='opacity .5s'; t.style.opacity='0'; setTimeout(function(){ t.remove(); }, 500); }, 4000);
+}
+
+
 const LS_AUTH_KEY = 'innovasalus_auth_v1';
 const EDITOR_HASH_KEY = 'innovasalus_editor_hash';
 
@@ -1718,11 +1811,16 @@ function isEditor() {
 }
 
 function applyEditorMode(editor) {
-  const ids = ['btnNuevoCliente', 'tabConfig', 'btnEditar', 'btnDrive', 'btnDriveText'];
+  const ids = ['btnNuevoCliente', 'tabConfig', 'btnEditar', 'btnDrive', 'btnNetlify'];
   ids.forEach(function(id) {
     const el = document.getElementById(id);
     if (!el) return;
-    el.style.display = editor ? '' : 'none';
+    if (editor) {
+      el.classList.add('editor-visible');
+      el.style.removeProperty('display');
+    } else {
+      el.classList.remove('editor-visible');
+    }
   });
 
   // Also hide Guardar en Drive and Backup buttons if not editor
@@ -1741,16 +1839,11 @@ function applyEditorMode(editor) {
 }
 
 function initAuthMode() {
-  const stored = localStorage.getItem(LS_AUTH_KEY);
-  if (stored === 'editor') {
-    applyEditorMode(true);
-  } else {
-    applyEditorMode(false);
-    // Show login prompt after short delay
-    setTimeout(function() {
-      document.getElementById('authModal').style.display = 'flex';
-    }, 800);
-  }
+  // Always start in read mode and show login prompt
+  applyEditorMode(false);
+  setTimeout(function() {
+    document.getElementById('authModal').style.display = 'flex';
+  }, 800);
 }
 
 async function submitPin() {
@@ -1766,12 +1859,12 @@ async function submitPin() {
       return;
     }
     localStorage.setItem(EDITOR_HASH_KEY, hash);
-    localStorage.setItem(LS_AUTH_KEY, 'editor');
+    // Never save session — always ask next time
     document.getElementById('authModal').style.display = 'none';
     applyEditorMode(true);
     showAuthSuccess('¡Contraseña configurada! Eres el editor de esta app.');
   } else if (hash === storedHash) {
-    localStorage.setItem(LS_AUTH_KEY, 'editor');
+    // Never save session — always ask next time
     document.getElementById('authModal').style.display = 'none';
     applyEditorMode(true);
     showAuthSuccess('Sesión de editor iniciada.');
