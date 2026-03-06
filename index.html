@@ -1708,83 +1708,61 @@ function showCfgError(name, linked) {
 }
 initMaster();
 
-// ── NETLIFY PUBLISH ───────────────────────────────────────────────────────────
-const NETLIFY_TOKEN = 'nfp_hG8n2K9xrS7GECBT54trMfHt2baUmxfef194';
-const NETLIFY_SITE_ID = 'c2d64eb2-fd52-4200-b7fe-43a3df72c098';
+// ── PUBLICAR VIA GITHUB API ───────────────────────────────────────────────────
+const GITHUB_TOKEN = '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';
+const GITHUB_REPO = 'Innovasalus/innovasalus';
+const GITHUB_FILE = 'index.html';
 
 async function netlifyPublish() {
   const btn = document.getElementById('btnNetlifyText');
   if (btn) btn.textContent = 'Publicando...';
 
   try {
-    // Build HTML blob with current DATA
-    const htmlContent = buildHTMLBlob();
-    
-    // Upload to Netlify using Files API
-    const response = await fetch(`https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_ID}/deploys`, {
-      method: 'POST',
+    // Step 1: Get current file SHA (required by GitHub API to update)
+    const getRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
       headers: {
-        'Authorization': `Bearer ${NETLIFY_TOKEN}`,
-        'Content-Type': 'application/zip'
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json'
       }
     });
+    if (!getRes.ok) throw new Error('No se pudo obtener el archivo de GitHub');
+    const fileData = await getRes.json();
+    const sha = fileData.sha;
 
-    // Use the simpler file digest approach
-    await netlifyDeployFiles(htmlContent, btn);
+    // Step 2: Build updated HTML content
+    const htmlContent = buildHTMLBlob();
+    const base64Content = btoa(unescape(encodeURIComponent(htmlContent)));
 
-  } catch(e) {
-    console.error('Netlify error:', e);
-    if (btn) btn.textContent = 'Publicar';
-    showToast('❌ Error al publicar en Netlify: ' + e.message, '#c8392a');
-  }
-}
-
-async function netlifyDeployFiles(htmlContent, btn) {
-  // Step 1: Create deploy with file digest
-  const encoder = new TextEncoder();
-  const data = encoder.encode(htmlContent);
-  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const sha1 = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-  const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_ID}/deploys`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${NETLIFY_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      files: { '/index.html': sha1 },
-      async: false
-    })
-  });
-
-  if (!deployRes.ok) {
-    const err = await deployRes.text();
-    throw new Error('Deploy create failed: ' + err);
-  }
-
-  const deploy = await deployRes.json();
-
-  // Step 2: Upload the file if required
-  if (deploy.required && deploy.required.length > 0) {
-    const uploadRes = await fetch(`https://api.netlify.com/api/v1/deploys/${deploy.id}/files/index.html`, {
+    // Step 3: Push updated file to GitHub
+    const putRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${NETLIFY_TOKEN}`,
-        'Content-Type': 'application/octet-stream'
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
       },
-      body: data
+      body: JSON.stringify({
+        message: 'Actualización datos ' + new Date().toLocaleString('es-ES'),
+        content: base64Content,
+        sha: sha
+      })
     });
-    if (!uploadRes.ok) {
-      const err = await uploadRes.text();
-      throw new Error('File upload failed: ' + err);
-    }
-  }
 
-  if (btn) btn.textContent = 'Publicar';
-  showToast('🚀 ¡Publicado en Netlify! Todos verán los cambios en unos segundos.', '#00ad9f');
+    if (!putRes.ok) {
+      const err = await putRes.text();
+      throw new Error('Error al subir: ' + err);
+    }
+
+    if (btn) btn.textContent = 'Publicar';
+    showToast('🚀 ¡Publicado! Netlify actualizará en ~30 segundos.', '#00ad9f');
+
+  } catch(e) {
+    console.error('GitHub publish error:', e);
+    if (btn) btn.textContent = 'Publicar';
+    showToast('❌ Error al publicar: ' + e.message, '#c8392a');
+  }
 }
+
 
 function showToast(msg, color) {
   const t = document.createElement('div');
