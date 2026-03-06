@@ -1709,23 +1709,40 @@ function showCfgError(name, linked) {
 initMaster();
 
 // ── PUBLICAR VIA GITHUB API ───────────────────────────────────────────────────
-const GITHUB_TOKEN = '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';
 const GITHUB_REPO = 'Innovasalus/innovasalus';
 const GITHUB_FILE = 'index.html';
+const GITHUB_TOKEN_KEY = 'innovasalus_gh_token';
+
+function getGitHubToken() {
+  return localStorage.getItem(GITHUB_TOKEN_KEY);
+}
 
 async function netlifyPublish() {
   const btn = document.getElementById('btnNetlifyText');
+
+  // Check token exists
+  let token = getGitHubToken();
+  if (!token) {
+    token = prompt('Introduce el token de GitHub para publicar:');
+    if (!token) return;
+    localStorage.setItem(GITHUB_TOKEN_KEY, token.trim());
+  }
+
   if (btn) btn.textContent = 'Publicando...';
 
   try {
-    // Step 1: Get current file SHA (required by GitHub API to update)
+    // Step 1: Get current file SHA
     const getRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
       headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github+json'
       }
     });
-    if (!getRes.ok) throw new Error('No se pudo obtener el archivo de GitHub');
+    if (!getRes.ok) {
+      // Token might be invalid, clear it
+      localStorage.removeItem(GITHUB_TOKEN_KEY);
+      throw new Error('Token inválido o sin permisos. Vuelve a intentarlo.');
+    }
     const fileData = await getRes.json();
     const sha = fileData.sha;
 
@@ -1737,7 +1754,7 @@ async function netlifyPublish() {
     const putRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github+json',
         'Content-Type': 'application/json'
       },
@@ -1762,6 +1779,7 @@ async function netlifyPublish() {
     showToast('❌ Error al publicar: ' + e.message, '#c8392a');
   }
 }
+
 
 
 function showToast(msg, color) {
