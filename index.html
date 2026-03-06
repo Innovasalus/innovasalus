@@ -18,9 +18,7 @@
     --red: #c8392a;
     --yellow: #c8952a;
   }
-  /* Editor-only elements: hidden by default, shown via JS after auth */
-#btnNuevoCliente, #tabConfig, #btnEditar, #btnDrive, #btnNetlify { display: none !important; }
-#btnNuevoCliente.editor-visible, #tabConfig.editor-visible, #btnEditar.editor-visible, #btnDrive.editor-visible, #btnNetlify.editor-visible { display: flex !important; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
   
   header {
@@ -1811,16 +1809,11 @@ function isEditor() {
 }
 
 function applyEditorMode(editor) {
-  const ids = ['btnNuevoCliente', 'tabConfig', 'btnEditar', 'btnDrive', 'btnNetlify'];
+  const ids = ['btnNuevoCliente', 'tabConfig', 'btnEditar', 'btnDrive', 'btnDriveText', 'btnNetlify'];
   ids.forEach(function(id) {
     const el = document.getElementById(id);
     if (!el) return;
-    if (editor) {
-      el.classList.add('editor-visible');
-      el.style.removeProperty('display');
-    } else {
-      el.classList.remove('editor-visible');
-    }
+    el.style.display = editor ? '' : 'none';
   });
 
   // Also hide Guardar en Drive and Backup buttons if not editor
